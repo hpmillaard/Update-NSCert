@@ -22,7 +22,7 @@ If (!$PFXFile){
 If (!$PFXFile){Error "This script can't run without a PFX file and will now quit."}
 
 Add-Type -AN Microsoft.VisualBasic
-If (!$PFXPassword){$PFXPassword = [Microsoft.VisualBasic.Interaction]::InputBox('Enter the Password for the PFX File.','PFX password','nsroot')}
+If (!$PFXPassword){$PFXPassword = [Microsoft.VisualBasic.Interaction]::InputBox('Enter the Password for the PFX File.','PFX password')}
 If (!$PFXPassword){Error "This script can't run without the PFX Password and will now quit"}
 
 try {	$PFX = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
@@ -39,13 +39,13 @@ Function Log($Content){Write-Host -f Green $content;"$(Get-Date -U '%a %d-%m-%G 
 
 If (!$NSIP -and !$NSUsername -and !$NSPassword -and !$SaveConfig){$NoNSParameters=$true}Else{$NoNSParameters=$false}
 
-If (!$NSIP){$NSIP = [Microsoft.VisualBasic.Interaction]::InputBox('Enter the NetScaler IP address or DNS name','NSIP','dc1-vpx00.kiwa.intranet')}
+If (!$NSIP){$NSIP = [Microsoft.VisualBasic.Interaction]::InputBox('Enter the NetScaler IP address or DNS name','NSIP')}
 Log "NSIP = $NSIP"
 
 If (!$NSUsername){$NSUsername = [Microsoft.VisualBasic.Interaction]::InputBox('Enter the NetScaler username','username','nsroot')}
 Log "NSUsername = $NSUsername"
 
-If (!$NSPassword){$NSPassword = [Microsoft.VisualBasic.Interaction]::InputBox("Enter the password for $nsroot",'password','nsr00t')}
+If (!$NSPassword){$NSPassword = [Microsoft.VisualBasic.Interaction]::InputBox("Enter the password for $nsroot",'password')}
 Log "NSPassword = $NSPassword"
 
 If ($vServers){Log "vServers = $vServers"}
