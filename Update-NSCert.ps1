@@ -22,16 +22,18 @@ If (!$PFXFile){
 If (!$PFXFile){Error "This script can't run without a PFX file and will now quit."}
 
 Add-Type -AN Microsoft.VisualBasic
-If (!$PFXPassword){$PFXPassword = [Microsoft.VisualBasic.Interaction]::InputBox('Enter the Password for the PFX File.','PFX password')}
+If (!$PFXPassword){$PFXPassword = [Microsoft.VisualBasic.Interaction]::InputBox('Enter the Password for the PFX File.','PFX password','nsroot')}
 If (!$PFXPassword){Error "This script can't run without the PFX Password and will now quit"}
+foreach ($char in $PFXPassword.ToCharArray()) {if ($char -notmatch '[0-9a-zA-Z]' -and $char -notin ' ', '"', "'", '`', '*') {Error "Password can't contain special characters like: $char"}}
 
 try {	$PFX = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
 	$PFX.Import($PFXFile, $PFXPassword, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
 }
 catch {Error "Incorrect password for PFX File. Script will now quit."}
+$FCN = [regex]::Escape(($PFX.SubjectName.Name).Split(",")[0])
 $CN = ($PFX.SubjectName.Name).Split("=")[1].Split(",")[0]
 $CertName = $CN.replace('*','wildcard')
-$Cert = $CN.replace('*','')
+$Cert = $CN.replace('*.','')
 
 $LogFile = "$PSScriptRoot\$CertName.log"
 sc $LogFile "$(Get-Date -U '%a %d-%m-%G %X') - Started Certificate replacement for $CN"
@@ -39,13 +41,13 @@ Function Log($Content){Write-Host -f Green $content;"$(Get-Date -U '%a %d-%m-%G 
 
 If (!$NSIP -and !$NSUsername -and !$NSPassword -and !$SaveConfig){$NoNSParameters=$true}Else{$NoNSParameters=$false}
 
-If (!$NSIP){$NSIP = [Microsoft.VisualBasic.Interaction]::InputBox('Enter the NetScaler IP address or DNS name','NSIP')}
+If (!$NSIP){$NSIP = [Microsoft.VisualBasic.Interaction]::InputBox('Enter the NetScaler IP address or DNS name','NSIP','dc1-vpx00.kiwa.intranet')}
 Log "NSIP = $NSIP"
 
 If (!$NSUsername){$NSUsername = [Microsoft.VisualBasic.Interaction]::InputBox('Enter the NetScaler username','username','nsroot')}
 Log "NSUsername = $NSUsername"
 
-If (!$NSPassword){$NSPassword = [Microsoft.VisualBasic.Interaction]::InputBox("Enter the password for $nsroot",'password')}
+If (!$NSPassword){$NSPassword = [Microsoft.VisualBasic.Interaction]::InputBox("Enter the password for $nsroot",'password','nsr00t')}
 Log "NSPassword = $NSPassword"
 
 If ($vServers){Log "vServers = $vServers"}
@@ -71,9 +73,10 @@ Log "Get All Certificates from NetScaler"
 $AllCerts = irm "https://$NSIP/nitro/v1/config/sslcertkey" @params
 
 Log "Select Certificate"
-$NSCert = $AllCerts.sslcertkey | ? subject -match $Cert
+$NSCert = $AllCerts.sslcertkey | ? subject -match $FCN
 
 If (!$NSCert){Log "Certificate not found"}Else{
+	If ($NSCert.count -gt 1){$NSCert = $NSCert | ogv -Title "Select the certificate you want to replace" -Outputmode Single}
 	Log "Get Certificate vServer bindings"
 	$BoundvServers = (irm "https://$NSIP/nitro/v1/config/sslcertkey_binding/$($NSCert.certkey)" @params -EA 0).sslcertkey_binding.sslcertkey_sslvserver_binding.servername
 
@@ -81,8 +84,10 @@ If (!$NSCert){Log "Certificate not found"}Else{
 		Log "Found Certificate vServer bindings: "
 		$VSBindings = @()
 		$BoundvServers | % {
-			$Q = irm "https://$NSIP/nitro/v1/config/sslvserver_sslcertkey_binding/$_" @params
-			$VSBindings += ($Q.sslvserver_sslcertkey_binding)
+			If ($_ -ne '-DtlsTurn'){
+				$Q = irm "https://$NSIP/nitro/v1/config/sslvserver_sslcertkey_binding/$_" @params
+				$VSBindings += ($Q.sslvserver_sslcertkey_binding)
+			}
 		}
 
 		If ($VSBindings){
@@ -135,7 +140,7 @@ If (!$NSCert){Log "Certificate not found"}Else{
 	}
 	If ($NSCert.cert -eq $NSCert.key){
 		$OldPFX = $NSCert.cert.replace('.key','.pfx')
-		Log "Remove old pfx $OldPFX from filesystem"
+		Log "Remove old pfx $OldPFX from filesystem (this might give an error that the file does not exist)"
 		$DelPFX = irm ("https://$NSIP/nitro/v1/config/systemfile/$($OldPFX)?args=filelocation:"+[System.Web.HttpUtility]::UrlEncode("/nsconfig/ssl")) -Method DELETE @params
 	}
 }
@@ -145,17 +150,17 @@ $CertBase64 = [System.Convert]::ToBase64String($(Get-Content $PFXFile -Encoding 
 $CertUpload = irm "https://$NSIP/nitro/v1/config/systemfile?action=add" -Method POST -Body (ConvertTo-Json @{"systemfile"=@{filename="$CertName.pfx";filecontent=$CertBase64;filelocation="/nsconfig/ssl/";fileencoding="BASE64"}}) @params
 
 Log "Install Certificate"
-$CertInstall = irm "https://$NSIP/nitro/v1/config/sslcertkey" -Method POST -Body (ConvertTo-Json @{"sslcertkey"=@{"certkey"="CERT_$CertName";"cert"="$CertName.pfx";"passplain"="$PFXPassword"}}) @params
+$CertInstall = irm "https://$NSIP/nitro/v1/config/sslcertkey" -Method POST -Body (ConvertTo-Json @{"sslcertkey"=@{"certkey"="CERT_$Cert";"cert"="$CertName.pfx";"passplain"="$PFXPassword"}}) @params
 
 Log "Get All New Certificates from NetScaler"
 $AllCerts = irm "https://$NSIP/nitro/v1/config/sslcertkey" @params
 
 Log "Select Certificate"
-$NSCert = $AllCerts.sslcertkey | ? subject -match $Cert
+$NSCert = $AllCerts.sslcertkey | ? subject -match $FCN
 
 Log "Link Certificate to Root"
 $RootCert = ($AllCerts.sslcertkey | ? subject -match $NSCert.issuer).certkey
-$CertLink = irm "https://$NSIP/nitro/v1/config/sslcertkey?action=link" -Method POST -Body (ConvertTo-Json @{"sslcertkey"=@{"certkey"="CERT_$CertName";"linkcertkeyname"="$RootCert"}}) @params
+$CertLink = irm "https://$NSIP/nitro/v1/config/sslcertkey?action=link" -Method POST -Body (ConvertTo-Json @{"sslcertkey"=@{"certkey"="CERT_$Cert";"linkcertkeyname"="$RootCert"}}) @params
 
 If ($vServers){
 	Log "vServers provided, binding them to given vServers"
@@ -165,7 +170,7 @@ If ($vServers){
 	If ($BoundvServers){
 		Log "Bind Certificate to vServers"
 		$VSBindings | % {
-			If ($_.certkeyname -match $CertName){
+			If ($_.certkeyname -match $Cert){
 				Log ("Binding: " + $_.certkeyname + " to vserver: " + $_.vservername)
 				$ca = $($_.ca).ToString().ToLower()
 				$snicert = $($_.snicert).ToString().ToLower()
