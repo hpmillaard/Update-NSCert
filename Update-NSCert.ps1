@@ -1,3 +1,19 @@
+<#
+.SYNOPSIS
+	Update SSL/TLS certificate on Citrix ADC/NetScaler
+.DESCRIPTION
+	Ask the user for a PFX File, PFX Password and credentials for the Citrix ADC/NetScaler. Check all bindings and remove them. Remove the old certificate. Upload the new certificate and recreate all bindings. Save the configuration to replicate to secondary nodes.
+.PARAMETER Help
+	Display the detailed information about this script
+.NOTES
+	File name	:	Update-NSCert.ps1
+	Version		:	1.1
+	Author		:	Harm Peter Millaard
+	Requires	:	PowerShell v5.1 and up
+.LINK
+	https://github.com/hpmillaard/Update-NSCert
+#>
+
 [CmdLetBinding()]
 Param(
 	[Parameter(Position=0)][string]$PFXFile,
